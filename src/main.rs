@@ -1,7 +1,8 @@
 use clap::Parser;
+use progress_bar::*;
 use std::{
     io::{Read, Write},
-    path::PathBuf,
+    path::PathBuf, fs::remove_file,
 };
 
 const BUF_SIZE: usize = 8192;
@@ -27,8 +28,11 @@ fn reverse_file(path: &PathBuf, outdir: &PathBuf) {
     let mut file = std::fs::File::open(path).unwrap();
     let mut outdir = outdir.clone();
     outdir.push(reverse_filename(path));
-    let mut reverse_file = std::fs::File::create(outdir).unwrap();
+    let mut reverse_file = std::fs::File::create(&outdir).unwrap();
     let mut buf = [0u8; BUF_SIZE];
+    let mut cnt = 0;
+    let total = file.metadata().unwrap().len() as usize;
+    let mut last_percent = 0;
 
     loop {
         match file.read(&mut buf) {
@@ -44,10 +48,32 @@ fn reverse_file(path: &PathBuf, outdir: &PathBuf) {
                     buf.reverse();
                     reverse_file.write(&buf).unwrap();
                 }
+                cnt += bytes_read;
+                let now_percent = (cnt as f64 * 100.0 / total as f64).ceil() as usize;
+                if now_percent != last_percent {
+                    set_progress_bar_progression(now_percent);
+                    last_percent = now_percent;
+                }
             }
-            Err(_) => panic!("Error occurred when processing {:?}.", path),
+            Err(_) => {
+                print_progress_bar_info(
+                    "Error",
+                    &format!("Error occurred when processing {}.", path.display()),
+                    Color::Red,
+                    Style::Bold,
+                );
+                remove_file(&outdir).unwrap();
+                return;
+            }
         }
     }
+
+    print_progress_bar_info(
+        "Success",
+        &format!("Finished reversing {}.", path.display()),
+        Color::Green,
+        Style::Bold,
+    );
 }
 
 fn main() {
@@ -64,8 +90,27 @@ fn main() {
 
     for file in &args.files {
         let path = PathBuf::from(file);
-        assert!(path.is_file());
-        assert!(path.exists());
+        init_progress_bar(100);
+        set_progress_bar_action("Reversing", Color::Blue, Style::Bold);
+        if !path.is_file() {
+            print_progress_bar_info(
+                "Failed",
+                &format!("{} is not a file.", file),
+                Color::Red,
+                Style::Bold,
+            );
+            continue;
+        }
+        if !path.exists() {
+            print_progress_bar_info(
+                "Failed",
+                &format!("{} does not exists.", file),
+                Color::Red,
+                Style::Bold,
+            );
+            continue;
+        }
         reverse_file(&path, &outdir);
+        finalize_progress_bar();
     }
 }

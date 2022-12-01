@@ -4,6 +4,8 @@ use std::{
     path::PathBuf,
 };
 
+const BUF_SIZE: usize = 8192;
+
 #[derive(Parser, Debug)]
 struct Args {
     #[arg(long, short)]
@@ -26,10 +28,26 @@ fn reverse_file(path: &PathBuf, outdir: &PathBuf) {
     let mut outdir = outdir.clone();
     outdir.push(reverse_filename(path));
     let mut reverse_file = std::fs::File::create(outdir).unwrap();
-    let mut buf = Vec::new();
-    file.read_to_end(&mut buf).unwrap();
-    buf.reverse();
-    reverse_file.write_all(&buf).unwrap();
+    let mut buf = [0u8; BUF_SIZE];
+
+    loop {
+        match file.read(&mut buf) {
+            Ok(bytes_read) => {
+                if bytes_read == 0 {
+                    break;
+                } else if bytes_read < buf.len() {
+                    let mut reversed_buf = Vec::from(&buf[0..bytes_read]);
+                    reversed_buf.reverse();
+                    reverse_file.write(&reversed_buf).unwrap();
+                    break;
+                } else {
+                    buf.reverse();
+                    reverse_file.write(&buf).unwrap();
+                }
+            }
+            Err(_) => panic!("Error occurred when processing {:?}.", path),
+        }
+    }
 }
 
 fn main() {
